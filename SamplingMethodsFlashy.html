@@ -269,9 +269,9 @@ input[type=range]:focus::-ms-fill-upper {
 		}
 
 		ui.insertAdjacentHTML('beforeend', "<h3>Bivariate normal distribution</h3>");
-		createSlider(ui, "Sx", "Sx", 34);
-		createSlider(ui, "Sy", "Sy", 9);
-		createSlider(ui, "rho", "Correlation (&rho;)", 34);
+		createSlider(ui, "Sx", "Sx", 30);
+		createSlider(ui, "Sy", "Sy", 20);
+		createSlider(ui, "rho", "Correlation (&rho;)", 60);
 
 		ui.insertAdjacentHTML('beforeend', "<p></p><div><a class=toggle id=run href='javascript:run();' >MCMC (Gibbs) Sample</a> </div>");
 
@@ -314,6 +314,8 @@ input[type=range]:focus::-ms-fill-upper {
 		var sampleObject = null;
 		var globalMax = 0;
 		init();
+		updateParameters();
+		
 		animate();
 		var totalSamples = 0;
 
@@ -455,7 +457,7 @@ input[type=range]:focus::-ms-fill-upper {
 			container = document.createElement('div');
 			document.body.appendChild(container);
 
-			camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 1, 2000);
+			camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 2000);
 			camera.position.set(0.0, 35, 35 * 3.5);
 
 			scene = new THREE.Scene();
