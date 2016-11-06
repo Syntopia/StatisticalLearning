@@ -226,6 +226,7 @@ input[type=range]:focus::-ms-fill-upper {
 		Settings.Sx = 34;
 		Settings.Sy = 9;
 		Settings.rho = 94;
+		Settings.brokenImpl = false;
 
 		var ui = document.getElementById('ui');
 
@@ -261,6 +262,7 @@ input[type=range]:focus::-ms-fill-upper {
 				sampleData = null;
 			} else {
 				link.innerHTML = "Stop";
+				totalSamples = 0;
 				Settings.run = true;
 			}
 			window.requestAnimationFrame(updateParameters);
@@ -295,7 +297,9 @@ input[type=range]:focus::-ms-fill-upper {
 			exposure : 1.0,
 			bloomStrength : 1.5,
 			bloomThreshold : 0.85,
-			bloomRadius : 0.4
+			bloomRadius : 0.4,
+			metalness: 0.0,
+			brokenImpl: false
 		};
 		var camera, scene, renderer, controls;
 		var effectFXAA, bloomPass, renderScene;
@@ -311,6 +315,7 @@ input[type=range]:focus::-ms-fill-upper {
 		var globalMax = 0;
 		init();
 		animate();
+		var totalSamples = 0;
 
 		function sample() {
 			var size = sampleBins * sampleBins;
@@ -357,10 +362,11 @@ input[type=range]:focus::-ms-fill-upper {
 			// Sample conditional distributions, see 
 			// https://onlinecourses.science.psu.edu/stat414/node/118
 			var rho = Settings.rho / 100;
-			for (var i = 0; i < 10000; i++) {
+			var samples = 10000;
+			for (var i = 0; i < samples; i++) {
 				var oldX = x;
 				x = rnd.nextGaussian() * sx * Math.sqrt(1 - rho * rho) + rho * (sx / sy) * y;
-				y = rnd.nextGaussian() * sy * Math.sqrt(1 - rho * rho) + rho * (sy / sx) * x;
+				y = rnd.nextGaussian() * sy * Math.sqrt(1 - rho * rho) + rho * (sy / sx) * (Settings.brokenImpl ? oldX : x);
 				if (Math.abs(x) > 1 || Math.abs(y) > 1)
 					continue;
 				var ind = sampleBins * Math.trunc(y * s2 + s2) + Math.trunc(x * s2 + s2);
@@ -368,6 +374,10 @@ input[type=range]:focus::-ms-fill-upper {
 				if (sampleData[ind] > max)
 					max = sampleData[ind];
 			}
+			
+			totalSamples += samples;
+			var link = document.getElementById("run");
+			link.innerHTML = "Stop (" + totalSamples/1000 +  "K samples on " + sampleBins + "&sup2; bins)";
 
 			for (var i = 0, j = 0, l = vertices.length; i < l; i++, j += 3) {
 				vertices[j + 1] = 1.0 + sampleData[i] * globalMax / max;
@@ -459,7 +469,7 @@ input[type=range]:focus::-ms-fill-upper {
 			standardMaterial = new THREE.MeshStandardMaterial({
 				map : null,
 				color : 0xffffff,
-				metalness : 0.90,
+				metalness : 0.00,
 				side : THREE.DoubleSide,
 				shading : THREE.SmoothShading
 			//,transparent: true,
@@ -572,6 +582,13 @@ input[type=range]:focus::-ms-fill-upper {
 			});
 			gui.add(params, 'bloomRadius', 0.0, 1.0).onChange(function(value) {
 				bloomPass.radius = Number(value);
+			});
+			gui.add(params, 'metalness', 0.0, 1.0).onChange(function(value) {
+				if (terrainMesh.material !== undefined) 
+					terrainMesh.material.metalness = Number(value);
+			});
+			gui.add(params, 'brokenImpl').onChange(function(value) {
+				Settings.brokenImpl = value;
 			});
 			gui.open();
 
