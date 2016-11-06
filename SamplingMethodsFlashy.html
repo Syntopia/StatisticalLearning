@@ -179,10 +179,11 @@ input[type=range]:focus::-ms-fill-upper {
 	<div style="position: fixed; padding: 30px;" id="ui">
 		<h1>Posterior sampling</h1>
 		<p>
-			<i>See Section 5.8 in ESL. Use Chrome!</i>
+			<i>See Section 8.6 in ESL. Use Chrome!</i>
 		</p>
 		<p>
-			<i>3D using <a href="https://threejs.org/">three.js</a> (based on Bloom example)</i>
+			3D using <a href="https://threejs.org/">three.js</a>.
+			
 		</p>
 	</div>
 	<div id="container"></div>
@@ -203,7 +204,8 @@ input[type=range]:focus::-ms-fill-upper {
 	<script src="js/shaders/FilmShader.js" type="text/javascript"></script>
 	<script src="js/shaders/VignetteShader.js" type="text/javascript"></script>
 
-	<script src="js/postprocessing/EffectComposer.js" type="text/javascript"></script>
+	<script src="js/postprocessing/EffectComposer.js"
+		type="text/javascript"></script>
 	<script src="js/postprocessing/RenderPass.js" type="text/javascript"></script>
 	<script src="js/postprocessing/FilmPass.js" type="text/javascript"></script>
 	<script src="js/postprocessing/MaskPass.js" type="text/javascript"></script>
@@ -211,8 +213,10 @@ input[type=range]:focus::-ms-fill-upper {
 	<script src="js/shaders/CopyShader.js" type="text/javascript"></script>
 	<script src="js/shaders/FXAAShader.js" type="text/javascript"></script>
 	<script src="js/shaders/ConvolutionShader.js" type="text/javascript"></script>
-	<script src="js/shaders/LuminosityHighPassShader.js" type="text/javascript"></script>
-	<script src="js/postprocessing/UnrealBloomPass.js" type="text/javascript"></script>
+	<script src="js/shaders/LuminosityHighPassShader.js"
+		type="text/javascript"></script>
+	<script src="js/postprocessing/UnrealBloomPass.js"
+		type="text/javascript"></script>
 
 	<script type="text/javascript">
 		var Settings = {};
@@ -251,6 +255,8 @@ input[type=range]:focus::-ms-fill-upper {
 			if (Settings.run) {
 				link.innerHTML = "Sample";
 				Settings.run = false;
+				scene.remove(sampleObject);
+				sampleData = null;
 			} else {
 				link.innerHTML = "Stop";
 				Settings.run = true;
@@ -261,7 +267,7 @@ input[type=range]:focus::-ms-fill-upper {
 		ui.insertAdjacentHTML('beforeend', "<h3>Bivariate normal distribution</h3>");
 		createSlider(ui, "Sx", "Sx", 34);
 		createSlider(ui, "Sy", "Sy", 9);
-		createSlider(ui, "rho", "Correlation (&#955;)", 34);
+		createSlider(ui, "rho", "Correlation (&rho;)", 34);
 
 		ui.insertAdjacentHTML('beforeend', "<div><a class=toggle id=run href='javascript:run();' >Sample</a> </div>");
 
@@ -278,6 +284,7 @@ input[type=range]:focus::-ms-fill-upper {
 		// Graphics variables
 		var terrainMesh, texture;
 		var heightData = null;
+		var sampleData = null;
 
 		var container, stats;
 		var params = {
@@ -295,30 +302,95 @@ input[type=range]:focus::-ms-fill-upper {
 		var standardMaterial;
 		var hdrCubeRenderTarget;
 
+		var sampleGeometry;
 		var marginal1 = null, marginal2 = null;
-		
+		var sampleBins = 30;
+		var sampleObject = null;
+		var globalMax = 0;
 		init();
 		animate();
 
+		function sample() {
+			var size = sampleBins * sampleBins;
+
+			if (sampleData == null) {
+				sampleData = new Float32Array(size);
+
+				sampleGeometry = new THREE.PlaneBufferGeometry(100, 100, sampleBins - 1, sampleBins - 1);
+				sampleGeometry.rotateX(-Math.PI / 2);
+					
+				var groundMaterial = new THREE.MeshPhongMaterial({
+					specular : 0x101010,
+					shininess : 230,
+					color : 0xAAFFFF,
+					side : THREE.DoubleSide,
+					transparent: true,
+					opacity: 0.5
+				});
+				
+				var mat = new THREE.LineBasicMaterial({
+					color : 0x888888,
+					linewidth : 1,
+					side : THREE.FrontSide
+				});
+				sampleObject = new THREE.Mesh(sampleGeometry, groundMaterial);
+				sampleObject.translateY(1.0);
+				sampleObject.receiveShadow = true;
+				sampleObject.castShadow = true;
+
+				scene.add(sampleObject);
+			}
+
+			var vertices = sampleGeometry.attributes.position.array;
+			
+			var s2 = sampleBins/2;
+			var p = 0;
+			var max = 0;
+			for (var j = 0; j < sampleBins; j++) {
+				for (var i = 0; i < sampleBins; i++) {
+					var x = (i - s2) / s2;
+					var y = (j - s2) / s2;
+				//	sampleData[p] += 0.3*rnd.nextGaussian()*(2-x*x-y*y);
+					//if (sampleData[p]>max) max = sampleData[p];
+					p++;
+				}
+			}
+			
+			for (var i = 0; i < 1000; i++) {
+				var x = rnd.nextGaussian()*(Settings.Sx/100);
+				var y = rnd.nextGaussian()*(Settings.Sy/100);
+				if (Math.abs(x)>1 || Math.abs(y)>1) continue;
+				var ind = sampleBins*Math.trunc(y*s2+s2)+Math.trunc(x*s2+s2);
+				sampleData[ind]+=1;
+				if (sampleData[ind]>max) max = sampleData[ind];
+			}
+			
+			for (var i = 0, j = 0, l = vertices.length; i < l; i++, j += 3) {
+								vertices[j + 1] = 1.0+ sampleData[i]*globalMax/max;
+			}
+			sampleGeometry.verticesNeedUpdate = true;
+			sampleGeometry.normalsNeedUpdate = true;
+			sampleGeometry.attributes.position.needsUpdate = true;
+			sampleGeometry.computeVertexNormals();
+			
+		}
+
 		function updateParameters() {
 			if (Settings.run) {
-				var size = terrainWidth * terrainDepth;
-				for (var i = 0; i < size; i++) {
-					heightData[i] += (Math.random() - 0.5) * 0.1;
-				}
+				sample();
 				window.requestAnimationFrame(updateParameters);
 			} else {
 				heightData = generateHeight(terrainWidth, terrainDepth, terrainMinHeight, terrainMaxHeight);
 			}
 			updateGeometry();
-			
+
 			scene.remove(marginal1);
-			marginal1 = createMarginal(Settings.Sx/100, true);
+			marginal1 = createMarginal(Settings.Sx / 100, true);
 			scene.add(marginal1);
-			 scene.remove(marginal2);
-			marginal2 = createMarginal(Settings.Sy/100, false);
+			scene.remove(marginal2);
+			marginal2 = createMarginal(Settings.Sy / 100, false);
 			scene.add(marginal2);
-			
+
 		}
 
 		function updateGeometry() {
@@ -346,6 +418,7 @@ input[type=range]:focus::-ms-fill-upper {
 			var V12 = 0.01;
 			var rho = Settings.rho / 100; //V12/(sx*sy);
 			var c = (1.0 / (2.0 * Math.PI * sx * sy * Math.sqrt(1 - rho * rho)));
+			globalMax = 0;
 			for (var j = 0; j < depth; j++) {
 				for (var i = 0; i < width; i++) {
 					var x = ((i) - w2) / w2;
@@ -356,6 +429,7 @@ input[type=range]:focus::-ms-fill-upper {
 					var val = c * Math.exp(-z / (2.0 * (1.0 - rho * rho)));
 					//if (x>0.5 || y>0.5) val = 0;
 					data[p] = val * 10.0;
+					if (globalMax<data[p]) globalMax=data[p];
 					p++;
 				}
 			}
@@ -380,9 +454,10 @@ input[type=range]:focus::-ms-fill-upper {
 			standardMaterial = new THREE.MeshStandardMaterial({
 				map : null,
 				color : 0xffffff,
-				metalness : 0.0,
+				metalness : 1.0,
 				side : THREE.DoubleSide,
 				shading : THREE.SmoothShading
+			
 			});
 
 			heightData = generateHeight(terrainWidth, terrainDepth, terrainMinHeight, terrainMaxHeight);
@@ -393,34 +468,14 @@ input[type=range]:focus::-ms-fill-upper {
 
 			updateGeometry();
 
-			var groundMaterial = new THREE.MeshPhongMaterial({
-				specular : 0x101010,
-				shininess : 230,
-				color : 0xAAFFFF,
-				side : THREE.DoubleSide
-			});
-
-			var geo = new THREE.WireframeGeometry(geometry); // or WireframeGeometry( geometry )
-
-			var mat = new THREE.LineBasicMaterial({
-				color : 0x888888,
-				linewidth : 1,
-				side : THREE.FrontSide
-			});
-
-			var wireframe = new THREE.LineSegments(geo, mat);
+			
 
 			terrainMesh = new THREE.Mesh(geometry, standardMaterial);
 			terrainMesh.receiveShadow = true;
 			terrainMesh.castShadow = true;
-			wireframe.translateY(1.0);
-			wireframe.receiveShadow = true;
-			wireframe.castShadow = true;
-
+		
 			scene.add(terrainMesh);
-			//scene.add( wireframe );
-
-			
+		
 			var textureLoader = new THREE.TextureLoader();
 			textureLoader.load("./js/roughness_map3.jpg", function(map) {
 				map.wrapS = THREE.RepeatWrapping;
@@ -518,33 +573,33 @@ input[type=range]:focus::-ms-fill-upper {
 
 		}
 
-		
 		function createMarginal(sx, isX) {
 			var s = new THREE.Shape();
 			for (var j = 0; j < 400; j++) {
-				var x = (j-200) / 100; 
-				var y = Math.exp(-x*x/(sx*sx*2)) / (sx*Math.sqrt(Math.PI*2.0));
-				if (j == 0) s. moveTo(x * 50, y * 10);
+				var x = (j - 200) / 100;
+				var y = Math.exp(-x * x / (sx * sx * 2)) / (sx * Math.sqrt(Math.PI * 2.0));
+				if (j == 0)
+					s.moveTo(x * 50, y * 10);
 				s.lineTo(x * 50, y * 10);
 			}
 			var geometry = new THREE.ShapeGeometry(s);
 			var material2 = new THREE.MeshLambertMaterial({
 				color : isX ? 0x6666ff : 0xff6666,
 				transparent : true,
-				opacity : 0.7,
+				opacity : 0.9,
 				side : THREE.DoubleSide
 			});
 			var mesh = new THREE.Mesh(geometry, material2 /*new THREE.MeshPhongMaterial()*/);
 			if (isX) {
 				mesh.translateZ(-50);
 			} else {
-				mesh.rotateY(Math.PI/2);
+				mesh.rotateY(Math.PI / 2);
 				mesh.translateZ(-50);
 			}
 			mesh.receiveShadow = true;
 			return mesh;
 		}
-		
+
 		function onWindowResize() {
 			var width = window.innerWidth;
 			var height = window.innerHeight;
@@ -582,6 +637,107 @@ input[type=range]:focus::-ms-fill-upper {
 			camera.lookAt(scene.position);
 			composer.render(0.01);
 		}
+		
+
+
+		// -------------------------------------------------------------------------------------------------------------
+		// Normal distribution using Ziggurat method. Taken from:
+		// https://www.filosophy.org/post/35/normaldistributed_random_values_in_javascript_using_the_ziggurat_algorithm/
+		// -------------------------------------------------------------------------------------------------------------
+
+		function Ziggurat(){
+
+		  var jsr = 123456789;
+
+		  var wn = Array(128);
+		  var fn = Array(128);
+		  var kn = Array(128);
+
+		  function RNOR(){
+		    var hz = SHR3();
+		    var iz = hz & 127;
+		    return (Math.abs(hz) < kn[iz]) ? hz * wn[iz] : nfix(hz, iz);
+		  }
+
+		  this.nextGaussian = function(){
+		    return RNOR();
+		  }
+
+		  function nfix(hz, iz){
+		    var r = 3.442619855899;
+		    var r1 = 1.0 / r;
+		    var x;
+		    var y;
+		    while(true){
+		      x = hz * wn[iz];
+		      if( iz == 0 ){
+		        x = (-Math.log(UNI()) * r1); 
+		        y = -Math.log(UNI());
+		        while( y + y < x * x){
+		          x = (-Math.log(UNI()) * r1); 
+		          y = -Math.log(UNI());
+		        }
+		        return ( hz > 0 ) ? r+x : -r-x;
+		      }
+
+		      if( fn[iz] + UNI() * (fn[iz-1] - fn[iz]) < Math.exp(-0.5 * x * x) ){
+		         return x;
+		      }
+		      hz = SHR3();
+		      iz = hz & 127;
+		 
+		      if( Math.abs(hz) < kn[iz]){
+		        return (hz * wn[iz]);
+		      }
+		    }
+		  }
+
+		  function SHR3(){
+		    var jz = jsr;
+		    var jzr = jsr;
+		    jzr ^= (jzr << 13);
+		    jzr ^= (jzr >>> 17);
+		    jzr ^= (jzr << 5);
+		    jsr = jzr;
+		    return (jz+jzr) | 0;
+		  }
+
+		  function UNI(){
+		    return 0.5 * (1 + SHR3() / -Math.pow(2,31));
+		  }
+
+		  function zigset(){
+		    // seed generator based on current time
+		    jsr ^= new Date().getTime();
+
+		    var m1 = 2147483648.0;
+		    var dn = 3.442619855899;
+		    var tn = dn;
+		    var vn = 9.91256303526217e-3;
+		    
+		    var q = vn / Math.exp(-0.5 * dn * dn);
+		    kn[0] = Math.floor((dn/q)*m1);
+		    kn[1] = 0;
+
+		    wn[0] = q / m1;
+		    wn[127] = dn / m1;
+
+		    fn[0] = 1.0;
+		    fn[127] = Math.exp(-0.5 * dn * dn);
+
+		    for(var i = 126; i >= 1; i--){
+		      dn = Math.sqrt(-2.0 * Math.log( vn / dn + Math.exp( -0.5 * dn * dn)));
+		      kn[i+1] = Math.floor((dn/tn)*m1);
+		      tn = dn;
+		      fn[i] = Math.exp(-0.5 * dn * dn);
+		      wn[i] = dn / m1;
+		    }
+		  }
+		  zigset();
+		}
+
+		var rnd = new Ziggurat();
+		
 	</script>
 
 </body>
